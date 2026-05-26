@@ -164,7 +164,7 @@ def main():
     ground_size = HEIGHT - GROUND_Y
     ground_tile = pg.transform.scale(ground_tile, (ground_size, ground_size))
     
-    raw_coin_img = pg.image.load("fig/coin.gif").convert_alpha()
+    raw_coin_img = pg.image.load("fig/coin.png").convert_alpha()
     coin_img = pg.transform.scale(raw_coin_img, (35, 35))
 
     # 効果音を読み込む
