@@ -2,7 +2,9 @@ import math
 import os
 import random
 import sys
+import time
 import pygame as pg
+
 
 # 【条件】実行ファイルのあるディレクトリをカレントディレクトリに設定
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -12,6 +14,7 @@ WIDTH = 800
 HEIGHT = 600
 GROUND_Y = 500
 
+# 色定義
 # 色定義
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
@@ -41,6 +44,8 @@ class Bird(pg.sprite.Sprite):
         # キャラクター画像の読み込みとサイズ調整
         self.img_run = pg.transform.scale(pg.image.load("fig/2.png").convert_alpha(), (60, 80))   # 動いている時
         self.img_jump = pg.transform.scale(pg.image.load("fig/6.png").convert_alpha(), (60, 80))  # ジャンプ時
+         # 無敵画像
+        self.img_invincible = pg.transform.scale(pg.image.load("fig/Gemini_Generated_Image_5cmamr5cmamr5cma.png").convert_alpha(),(80, 80))
         
         # ジャンプ時の効果音を読み込む
         self.se_jump = pg.mixer.Sound("fig/sound/junp.wav")
@@ -56,11 +61,30 @@ class Bird(pg.sprite.Sprite):
         self.double_jump_stock = 0
         self.has_double_jumped = False # すでに空中で2段目を使ったか
 
-    def update(self, key_lst: list[bool] = None):
+    def update(self, key_lst: list[bool] = None, invincible=False):
 
         if key_lst is None:
             key_lst = pg.key.get_pressed()
-        # 重力処理
+
+        # 無敵時画像
+        if invincible:
+            center = self.rect.center
+            self.image = self.img_invincible
+            self.rect = self.image.get_rect()
+            self.rect.center = center
+
+        else:
+            center = self.rect.center
+
+            if self.on_ground:
+                self.image = self.img_run
+            else:
+                self.image = self.img_jump
+
+            self.rect = self.image.get_rect()
+            self.rect.center = center
+
+        # 重力
         self.y_speed += self.gravity
         self.rect.y += self.y_speed
 
@@ -101,7 +125,13 @@ class Obstacle(pg.sprite.Sprite):
     """
     def __init__(self, speed):
         super().__init__()
+        super().__init__()
         height = random.randint(40, 80)
+        self.image = pg.Surface((50, height))
+        self.image.fill(RED)
+        self.rect = self.image.get_rect()
+        self.rect.left = WIDTH
+        self.rect.bottom = GROUND_Y
         self.image = pg.Surface((50, height))
         self.image.fill(RED)
         self.rect = self.image.get_rect()
@@ -130,6 +160,48 @@ class Coin(pg.sprite.Sprite):
         self.rect.x -= self.speed
         if check_bound_horizontal(self.rect):
             self.kill()
+
+
+class Star(pg.sprite.Sprite):
+    def __init__(self, speed):
+        super().__init__()
+
+        self.image = pg.Surface((40, 40), pg.SRCALPHA)
+
+        pg.draw.polygon(
+            self.image,
+            YELLOW,
+            [
+                (20, 0), (25, 15), (39, 15),
+                (28, 24), (32, 39),
+                (20, 30), (8, 39),
+                (12, 24), (1, 15),
+                (15, 15)
+            ]
+        )
+
+        self.rect = self.image.get_rect()
+
+        self.rect.left = WIDTH + random.randint(0, 200)
+        self.rect.bottom = random.randint(200, 450)
+
+        self.x_speed = -10
+        self.y_speed = 10
+        self.gravity = 0.5
+
+    def update(self):
+        self.rect.x += self.x_speed
+
+        self.y_speed += self.gravity
+        self.rect.y += self.y_speed
+
+        if self.rect.bottom >= GROUND_Y:
+            self.rect.bottom = GROUND_Y
+            self.y_speed = -10
+
+        if self.rect.right < 0:
+            self.kill()
+
 
 class Score:
     """
@@ -199,6 +271,12 @@ def main():
     coins = pg.sprite.Group()
     score = Score()
 
+    stars = pg.sprite.Group()
+
+    # 無敵関連
+    invincible = False
+    invincible_start = 0
+
     is_started = False
     game_over = False
     tmr = 0
@@ -253,18 +331,33 @@ def main():
             if tmr % 80 == 0:
                 coins.add(Coin(current_speed, coin_img))
 
-            bird.update(pg.key.get_pressed())
+                        # スター生成
+            if tmr % 1000 == 0:
+                stars.add(Star(current_speed))
+
+            bird.update(pg.key.get_pressed(), invincible)
             obstacles.update()
             coins.update()
+            stars.update()
 
             for coin in pg.sprite.spritecollide(bird, coins, True):
                 se_coin.play()
                 score.coin_value += 1
 
-            if pg.sprite.spritecollide(bird, obstacles, False):
-                game_over = True
-                pg.mixer.music.stop()
-                se_gameover.play()
+            # スター取得
+            if pg.sprite.spritecollide(bird, stars, True):
+                invincible = True
+                invincible_start = time.time()
+
+            # 無敵時間終了
+            if invincible and time.time() - invincible_start >= 10:
+                invincible = False                
+
+            if not invincible:
+                if pg.sprite.spritecollide(bird, obstacles, False):
+                    game_over = True
+                    pg.mixer.music.stop()
+                    se_gameover.play()
             
             for obstacle in obstacles:
                 if obstacle.rect.x < -10 and not hasattr(obstacle, "scored"):
@@ -318,11 +411,11 @@ def main():
 
                 stock_font = pg.font.SysFont(None, 36)
                 stock_txt = stock_font.render(f"DOUBLE JUMP: {bird.double_jump_stock}", True, RED if bird.double_jump_stock > 0 else WHITE)
-                screen.blit(stock_txt, (580, 65))
-
+                screen.blit(stock_txt, (580, 65))            
+                coins.draw(screen)
+                stars.draw(screen)
             # ゲーム中のオブジェクト描画
             obstacles.draw(screen)
-            coins.draw(screen)
             screen.blit(bird.image, bird.rect) 
             
             # スタート画面の文字描画
@@ -342,6 +435,11 @@ def main():
             tmr += 1
         clock.tick(60)
 
+if __name__ == "__main__":
+    pg.init()
+    main()
+    pg.quit()
+    sys.exit()
 if __name__ == "__main__":
     pg.init()
     main()
